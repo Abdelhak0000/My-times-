@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ar">  
+<head>  
+  <meta charset="UTF-8" />  
+  <title>📆 جدول أسبوعي — مواقيت القالة</title>  
+  <meta name="viewport" content="width=device-width, initial-scale=1" />  
+
+  <!-- PWA -->  
+  <link rel="manifest" href="manifest.json">  
+  <meta name="theme-color" content="#11998e">  
+  <link rel="icon" href="icon.jpg" type="image/jpeg">  
+
+  <style>  
+    body {  
+      font-family: "Cairo", Tahoma, sans-serif;  
+      background: linear-gradient(135deg,#11998e,#38ef7d);  
+      margin: 0;  
+      padding: 20px;  
+      text-align: center;  
+      color: #fff;  
+    }  
+    h1 {  
+      font-size: 2em;  
+      margin-bottom: 20px;  
+      padding: 10px 20px;  
+      display: inline-block;  
+      background: rgba(255,255,255,0.15);  
+      border-radius: 12px;  
+      border: 2px solid rgba(255,255,255,0.4);  
+    }  
+    table {  
+      width: 60%;  
+      margin: 20px auto;  
+      border-collapse: collapse;  
+      background: #fff;  
+      box-shadow: 0 8px 25px rgba(0,0,0,0.25);  
+      color: #333;  
+      border-radius: 15px;  
+      overflow: hidden;  
+      min-width: 280px;  
+      max-width: 600px;  
+    }  
+    thead {background: #2ecc71; color: white; font-size: 1.2em;}  
+    th,td {border:1px solid #ddd; padding:14px; font-size:1.1em; text-align:right;}  
+    td input {  
+      width: 95%;  
+      padding: 10px;  
+      border: 1px solid #ccc;  
+      border-radius: 6px;  
+      font-size: 1em;  
+      text-align: right;  
+      direction: rtl;  
+      box-sizing: border-box;  
+    }  
+    tr:nth-child(even){background:#f9f9f9;}  
+    tr:hover{background:#eafaf1;}  
+    #dayTitle {  
+      margin-bottom: 15px;  
+      font-size: 1.5em;  
+      font-weight: bold;  
+      color: #fff;  
+      text-shadow: 1px 1px 2px #00000055;  
+    }  
+    @media(max-width:480px){  
+      table{width:90%;}  
+      h1{font-size:1.5em;}  
+    }  
+
+    /* ===== انتقال احترافي ثابت (خروج -> تحديث -> دخول) ===== */
+    /* الحالة الأساسية - سيتم التحكم بكلاسات off-left / off-right / on */
+    #scheduleTable.fade-slide {
+      transition: transform 420ms cubic-bezier(.22,.9,.3,1), opacity 350ms ease;
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    /* خروج نحو اليسار (المحتوى يختفي إلى اليسار) */
+    #scheduleTable.fade-slide.off-left {
+      transform: translateX(-40px);
+      opacity: 0;
+    }
+
+    /* خروج نحو اليمين (المحتوى يختفي إلى اليمين) */
+    #scheduleTable.fade-slide.off-right {
+      transform: translateX(40px);
+      opacity: 0;
+    }
+
+    /* دخول مركزي (المحتوى في الوسط ومرئي) */
+    #scheduleTable.fade-slide.on {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+  </style>  
+</head>  
+<body>  
+  <h1>📆 جدول أسبوعي</h1>  
+  <div id="dayTitle"></div>  
+  <table id="scheduleTable" class="fade-slide on">  
+    <thead><tr><th>الفترة</th><th>المهمة</th></tr></thead>  
+    <tbody id="scheduleBody"></tbody>  
+  </table>  
+
+  <script>  
+    const days=["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];  
+    let currentDayIndex=new Date().getDay();  
+    const scheduleBody=document.getElementById('scheduleBody');  
+    const dayTitle=document.getElementById('dayTitle');  
+    const scheduleTable=document.getElementById('scheduleTable');  
+    let timeCells=[],inputElems=[];  
+    let isAnimating = false; // لمنع التداخل عند السحب المتكرر
+
+    const baseTimes=[  
+      "الفجر","07:00 - 12:00","12:00 - 13:30",  
+      "13:30 - 16:30","16:30 - المغرب","المغرب - العشاء"  
+    ];  
+
+    function createTable(){  
+      scheduleBody.innerHTML="";  
+      timeCells=[]; inputElems=[];  
+      for(let i=0;i<6;i++){  
+        const tr=document.createElement('tr');  
+        const tdTime=document.createElement('td');  
+        tdTime.textContent=baseTimes[i];  
+        const tdTask=document.createElement('td');  
+        const input=document.createElement('input');  
+        input.type="text";  
+
+        // نملأ القيمة المحفوظة إن وُجدت لليوم الحالي
+        const saved=localStorage.getItem(`${days[currentDayIndex]}_task_${i}`);  
+        if(saved) input.value=saved;  
+
+        // عند التعديل نخزن باسم اليوم الظاهر حالياً (المتغيّر currentDayIndex يحدّث في وقت التبديل)
+        input.addEventListener('input',()=>localStorage.setItem(`${days[currentDayIndex]}_task_${i}`,input.value));  
+
+        tdTask.appendChild(input);  
+        tr.appendChild(tdTime); tr.appendChild(tdTask);  
+        scheduleBody.appendChild(tr);  
+        timeCells.push(tdTime); inputElems.push(input);  
+      }  
+    }  
+
+    // دالة تقود كامل تتابع الأنيميشن: خروج -> تحديث المحتوى -> دخول
+    function animateDayChange(dayIdx, direction = "right"){
+      if(isAnimating) return; // إذا هناك أنيميشن شغال تجاهل الطلبات المتزامنة
+      isAnimating = true;
+
+      // 1) بدء حركة الخروج: نزيل حالة 'on' ثم نضيف off-(left|right)
+      scheduleTable.classList.remove('on','off-left','off-right');
+      // force reflow للتأكد من أن إزالة 'on' مُسجلة
+      void scheduleTable.offsetWidth;
+
+      // نبدأ الخروج في الاتجاه المناسب
+      if(direction === "left"){
+        // المستخدم سحب لليسار -> ننتقل إلى اليوم التالي: نُخرج المحتوى القديم إلى اليسار
+        scheduleTable.classList.add('off-left');
+      } else {
+        // سحب لليمين -> ننتقل إلى اليوم السابق: نخرج المحتوى القديم إلى اليمين
+        scheduleTable.classList.add('off-right');
+      }
+
+      // 2) عندما ينتهي "الخروج" (transitionend) نحدّث المحتوى ثم نُدخل المحتوى الجديد
+      const onExit = (e) => {
+        // نحرص أن الحدث من الجدول نفسه
+        if(e.target !== scheduleTable) return;
+
+        scheduleTable.removeEventListener('transitionend', onExit);
+
+        // حدّث عنوان اليوم والمحتوى هنا (بعد خروج العنصر القديم)
+        dayTitle.textContent = `اليوم: ${days[dayIdx]}`;
+        inputElems.forEach((inp,i)=>{
+          const saved = localStorage.getItem(`${days[dayIdx]}_task_${i}`);
+          inp.value = saved || "";
+        });
+
+        // جهّز الدخول من الناحية المقابلة للاتجاه
+        scheduleTable.classList.remove('off-left','off-right');
+        // بداية الدخول تكون من الجهة المقابلة: إذا دخلت من اليمين -> نضع off-right (موقع البداية)
+        if(direction === "left"){
+          scheduleTable.classList.add('off-right'); // يبدأ من اليمين ثم يأتي إلى الوسط
+        } else {
+          scheduleTable.classList.add('off-left');  // يبدأ من اليسار
+        }
+
+        // force reflow ثم نُظهره (يعمل الانتقال إلى منتصف الشاشة)
+        void scheduleTable.offsetWidth;
+
+        // ننتظر انتهاء دخول الأنيميشن لنرفع isAnimating
+        const onEnter = (ev) => {
+          if(ev.target !== scheduleTable) return;
+          scheduleTable.removeEventListener('transitionend', onEnter);
+          isAnimating = false;
+        };
+
+        scheduleTable.addEventListener('transitionend', onEnter);
+        scheduleTable.classList.add('on'); // يؤدي إلى التحرك إلى translateX(0) و opacity:1
+      };
+
+      scheduleTable.addEventListener('transitionend', onExit);
+    }
+
+    // بُنى فرعية: تحديث الواجهات — هذه تستدعي animateDayChange بحيث يتم التعامل مع الرسوم
+    function updateInputs(dayIdx, direction="right"){
+      // استدعاء الأنيميشن الذي يقوم بالخروج -> تحديث -> دخول
+      animateDayChange(dayIdx, direction);
+    }
+
+    async function fetchPrayerTimes(){  
+      const url=`https://api.aladhan.com/v1/timingsByCity?city=El%20Kala&country=Algeria&method=3`;  
+      try{  
+        const res=await fetch(url);  
+        const json=await res.json();  
+        const t=json.data.timings;  
+
+        let [mh,mm]=t.Maghrib.split(":").map(Number);  
+        mm += 3;  
+        if(mm >= 60){ mm -= 60; mh += 1; }  
+        mh = (mh + 24) % 24;  
+        const maghribAdj = `${String(mh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;  
+
+        const times={  
+          fajr: t.Fajr.slice(0,5),  
+          maghrib: maghribAdj,  
+          isha: t.Isha.slice(0,5)  
+        };  
+
+        localStorage.setItem("lastPrayerTimes", JSON.stringify(times));  
+        return times;  
+      }catch(e){  
+        const saved = localStorage.getItem("lastPrayerTimes");  
+        if(saved) return JSON.parse(saved);  
+        return {fajr:"05:00", maghrib:"18:33", isha:"19:30"};  
+      }  
+    }  
+
+    async function updatePrayerCells(){  
+      try {
+        const times = await fetchPrayerTimes();  
+        if(timeCells.length >= 6){  
+          const fajrCell = `${times.fajr} - 07:00`;  
+          const asrToMaghrib = `16:30 - ${times.maghrib}`;  
+          const maghribToIsha = `${times.maghrib} - ${times.isha}`;  
+
+          timeCells[0].textContent = fajrCell;  
+          timeCells[4].textContent = asrToMaghrib;  
+          timeCells[5].textContent = maghribToIsha;  
+
+          localStorage.setItem("lastRenderedPrayerCells", JSON.stringify({  
+            fajrCell, asrToMaghrib, maghribToIsha  
+          }));  
+        }  
+      } catch(e){  
+        const savedCells = localStorage.getItem("lastRenderedPrayerCells");  
+        if(savedCells){  
+          const parsed = JSON.parse(savedCells);  
+          if(timeCells.length >= 6){  
+            timeCells[0].textContent = parsed.fajrCell;  
+            timeCells[4].textContent = parsed.asrToMaghrib;  
+            timeCells[5].textContent = parsed.maghribToIsha;  
+          }  
+        }  
+      }  
+    }  
+
+    // السحب يمين/يسار (التبديل بين الأيام) — نغير currentDayIndex قبل استدعاء updateInputs
+    let touchStartX = 0;  
+    document.addEventListener("touchstart", e => { touchStartX = e.changedTouches[0].screenX; });  
+    document.addEventListener("touchend", e => {  
+      let touchEndX = e.changedTouches[0].screenX;  
+      if(touchEndX - touchStartX > 50){  // سحب لليمين -> اليوم السابق
+        currentDayIndex = (currentDayIndex + 6) % 7;  
+        updateInputs(currentDayIndex,"right");  
+      }  
+      else if(touchStartX - touchEndX > 50){ // سحب لليسار -> اليوم التالي
+        currentDayIndex = (currentDayIndex + 1) % 7;  
+        updateInputs(currentDayIndex,"left");  
+      }  
+    });  
+
+    // إنشاء الجدول وتهيئة العرض الأولي
+    createTable();  
+    // ضبط النص المبدئي للّياوم (بإظهار المحتوى مباشرة دون أنيميشن أولي)
+    dayTitle.textContent=`اليوم: ${days[currentDayIndex]}`;
+    updatePrayerCells();  
+
+    // تسجيل Service Worker  
+    if ("serviceWorker" in navigator) {  
+      window.addEventListener("load", () => {  
+        navigator.serviceWorker.register("./service-worker.js")  
+          .then(reg => console.log("SW مسجل:", reg.scope))  
+          .catch(err => console.error("خطأ SW:", err));  
+      });  
+    }  
+  </script>  
+</body>  
+</html>
