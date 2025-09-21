@@ -1,6 +1,6 @@
 {
   "name": "📆 جدول أسبوعي — مواقيت القالة",
-  "short_name": "جدول القالة",
+  "short_name":" اوقاتي",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#11998e",
